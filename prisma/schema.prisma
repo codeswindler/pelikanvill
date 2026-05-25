@@ -1,0 +1,112 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                    Int              @id @default(autoincrement())
+  username              String           @unique @db.VarChar(100)
+  passwordHash          String           @db.VarChar(255)
+  phone                 String           @db.VarChar(20)
+  role                  String           @default("manager") @db.VarChar(20) // "admin" | "manager"
+  otpEnabled            Boolean          @default(false)
+  notificationsEnabled  Boolean          @default(true)
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+
+  permissions   UserPermission[]
+  otpCodes      OtpCode[]
+  sessions      Session[]
+  notifications Notification[]
+  qrHistory     QrHistory[]
+
+  @@map("users")
+}
+
+model UserPermission {
+  id         Int    @id @default(autoincrement())
+  userId     Int
+  permission String @db.VarChar(50) // "view_feedback" | "generate_qr"
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, permission])
+  @@map("user_permissions")
+}
+
+model OtpCode {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  code      String   @db.VarChar(10)
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("otp_codes")
+}
+
+model Session {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  token     String   @unique @db.VarChar(500)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model Menu {
+  id           Int      @id @default(autoincrement())
+  filename     String   @db.VarChar(255)
+  originalName String   @db.VarChar(255)
+  fileSizeMB   Float?   // File size in MB after compression
+  originalSizeMB Float? // Original file size in MB before compression
+  isActive     Boolean  @default(false)
+  uploadedAt   DateTime @default(now())
+
+  @@map("menus")
+}
+
+model Feedback {
+  id        Int      @id @default(autoincrement())
+  name      String   @db.VarChar(100)
+  message   String   @db.Text
+  rating    Int
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@map("feedback")
+}
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  type      String   @db.VarChar(50) // "feedback_alert"
+  message   String   @db.Text
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+model QrHistory {
+  id              Int      @id @default(autoincrement())
+  generatedByUserId Int
+  qrType          String   @db.VarChar(20) // "menu" | "review"
+  url             String   @db.VarChar(500)
+  generatedAt     DateTime @default(now())
+
+  generatedBy User @relation(fields: [generatedByUserId], references: [id], onDelete: Cascade)
+
+  @@map("qr_history")
+}
