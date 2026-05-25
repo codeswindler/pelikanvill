@@ -87,26 +87,9 @@ export default function AdminDashboardPage() {
   >("qr");
 
   // QR State
-  const [qrPasswordModal, setQrPasswordModal] = useState<{
-    visible: boolean;
-    type: "menu" | "review";
-  }>({ visible: false, type: "menu" });
-  const [qrPassword, setQrPassword] = useState("");
-  const [qrPasswordError, setQrPasswordError] = useState("");
-  const [qrPasswordLoading, setQrPasswordLoading] = useState(false);
-  const [qrWarningModal, setQrWarningModal] = useState<{
-    visible: boolean;
-    type: "menu" | "review";
-  }>({ visible: false, type: "menu" });
   const [qrGenerated, setQrGenerated] = useState<{
     [key: string]: boolean;
   }>({});
-  const [undoToast, setUndoToast] = useState<{
-    visible: boolean;
-    type: string;
-    entryId: number | null;
-    countdown: number;
-  }>({ visible: false, type: "", entryId: null, countdown: 30 });
 
   // Menu state
   const [menus, setMenus] = useState<MenuEntry[]>([]);
@@ -150,19 +133,6 @@ export default function AdminDashboardPage() {
     fetchFeedback();
     fetchNotifications();
   }, []);
-
-  // Undo countdown timer
-  useEffect(() => {
-    if (!undoToast.visible) return;
-    if (undoToast.countdown <= 0) {
-      setUndoToast((prev) => ({ ...prev, visible: false }));
-      return;
-    }
-    const timer = setTimeout(() => {
-      setUndoToast((prev) => ({ ...prev, countdown: prev.countdown - 1 }));
-    }, 1000);
-    return () => clearTimeout(timer);
-  }, [undoToast.visible, undoToast.countdown]);
 
   const fetchSession = async () => {
     try {
@@ -237,80 +207,19 @@ export default function AdminDashboardPage() {
   };
 
   // ============ QR CODES ============
-  const handleQrGenerate = (type: QrType) => {
-    setQrPasswordModal({ visible: true, type });
-    setQrPassword("");
-    setQrPasswordError("");
-  };
-
-  const handleQrPasswordSubmit = async () => {
-    setQrPasswordLoading(true);
-    setQrPasswordError("");
-
-    try {
-      const res = await fetch("/api/auth/verify-password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: qrPassword }),
-      });
-
-      if (res.ok) {
-        setQrPasswordModal({ visible: false, type: qrPasswordModal.type });
-        setQrWarningModal({ visible: true, type: qrPasswordModal.type });
-      } else {
-        setQrPasswordError("Incorrect password");
-      }
-    } catch {
-      setQrPasswordError("Something went wrong");
-    } finally {
-      setQrPasswordLoading(false);
-    }
-  };
-
-  const handleQrConfirm = async () => {
-    const type = qrWarningModal.type;
-    setQrWarningModal({ visible: false, type });
+  const handleQrGenerate = async (type: QrType) => {
+    setQrGenerated((prev) => ({ ...prev, [type]: true }));
 
     // Log QR access; the API stores the permanent URL server-side.
     try {
-      const res = await fetch("/api/qr-history", {
+      await fetch("/api/qr-history", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ qrType: type }),
       });
-
-      if (res.ok) {
-        const data = await res.json();
-        setQrGenerated((prev) => ({ ...prev, [type]: true }));
-
-        // Show undo toast with 30s countdown
-        setUndoToast({
-          visible: true,
-          type,
-          entryId: data.entry.id,
-          countdown: 30,
-        });
-      }
     } catch {
       console.error("Failed to log QR generation");
     }
-  };
-
-  const handleQrUndo = async () => {
-    if (!undoToast.entryId) return;
-
-    try {
-      await fetch("/api/qr-history", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: undoToast.entryId }),
-      });
-
-      setQrGenerated((prev) => ({ ...prev, [undoToast.type]: false }));
-    } catch {
-      console.error("Failed to undo");
-    }
-    setUndoToast({ visible: false, type: "", entryId: null, countdown: 30 });
   };
 
   const downloadQR = useCallback(
@@ -1639,106 +1548,6 @@ export default function AdminDashboardPage() {
         )}
       </div>
 
-      {/* ==================== PASSWORD MODAL ==================== */}
-      {qrPasswordModal.visible && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 print:hidden">
-          <div className="bg-gray-900 rounded-2xl border border-gray-700 p-6 w-full max-w-sm mx-4 shadow-2xl">
-            <h3 className="text-lg font-bold text-white mb-2">
-              🔐 Confirm Password
-            </h3>
-            <p className="text-sm text-gray-400 mb-4">
-              Enter your password to generate a{" "}
-              {qrPasswordModal.type === "menu" ? "menu" : "review"} QR code.
-            </p>
-
-            {qrPasswordError && (
-              <div className="mb-3 bg-red-900/30 text-red-400 text-sm px-3 py-2 rounded-lg border border-red-800/50">
-                {qrPasswordError}
-              </div>
-            )}
-
-            <input
-              type="password"
-              value={qrPassword}
-              onChange={(e) => setQrPassword(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleQrPasswordSubmit()}
-              className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:ring-amber-600 focus:border-amber-600 mb-4"
-              placeholder="Enter your password"
-              autoFocus
-            />
-
-            <div className="flex gap-3">
-              <button
-                onClick={handleQrPasswordSubmit}
-                disabled={qrPasswordLoading || !qrPassword}
-                className="flex-1 py-2.5 bg-amber-600 text-white font-semibold rounded-xl hover:bg-amber-700 transition-colors disabled:opacity-50"
-              >
-                {qrPasswordLoading ? "Verifying..." : "Confirm"}
-              </button>
-              <button
-                onClick={() =>
-                  setQrPasswordModal({ visible: false, type: "menu" })
-                }
-                className="flex-1 py-2.5 bg-gray-800 text-gray-300 font-semibold rounded-xl border border-gray-700 hover:bg-gray-700 transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ==================== STATIC QR CONFIRMATION MODAL ==================== */}
-      {qrWarningModal.visible && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 print:hidden">
-          <div className="bg-gray-900 rounded-2xl border border-gray-700 p-6 w-full max-w-sm mx-4 shadow-2xl">
-            <div className="text-center mb-4">
-              <div className="w-14 h-14 mx-auto mb-3 rounded-full bg-amber-600/20 flex items-center justify-center">
-                <svg
-                  className="w-7 h-7 text-amber-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                  />
-                </svg>
-              </div>
-              <h3 className="text-lg font-bold text-white">
-                Permanent QR Link
-              </h3>
-            </div>
-            <p className="text-sm text-gray-300 text-center mb-6">
-              This QR code will always point to{" "}
-              <span className="text-amber-400 font-semibold">
-                {qrWarningModal.type === "menu" ? menuUrl : reviewUrl}
-              </span>
-              . You can update the menu later without reprinting.
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={handleQrConfirm}
-                className="flex-1 py-2.5 bg-amber-600 text-white font-semibold rounded-xl hover:bg-amber-700 transition-colors"
-              >
-                Show QR Code
-              </button>
-              <button
-                onClick={() =>
-                  setQrWarningModal({ visible: false, type: "menu" })
-                }
-                className="flex-1 py-2.5 bg-gray-800 text-gray-300 font-semibold rounded-xl border border-gray-700 hover:bg-gray-700 transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* ==================== EDIT USER MODAL ==================== */}
       {editingUser && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 print:hidden">
@@ -1866,25 +1675,6 @@ export default function AdminDashboardPage() {
         </div>
       )}
 
-      {/* ==================== UNDO TOAST ==================== */}
-      {undoToast.visible && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 print:hidden">
-          <div className="bg-gray-800 border border-gray-700 rounded-xl px-5 py-3 shadow-2xl flex items-center gap-4">
-            <p className="text-sm text-gray-200">
-              Static QR code shown.{" "}
-              <button
-                onClick={handleQrUndo}
-                className="text-amber-400 font-semibold hover:text-amber-300 underline"
-              >
-                Undo
-              </button>
-            </p>
-            <span className="text-xs text-gray-500 font-mono">
-              {undoToast.countdown}s
-            </span>
-          </div>
-        </div>
-      )}
     </main>
   );
 }
